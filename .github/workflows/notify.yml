@@ -18,6 +18,7 @@ jobs:
         with:
           workload_identity_provider: projects/998355810935/locations/global/workloadIdentityPools/gm-gh-actions/providers/github-oidc
           service_account: gm-push-sender@gamers-masr-app.iam.gserviceaccount.com
+          token_format: access_token
       - uses: actions/setup-node@v4
         with:
           node-version: 20
