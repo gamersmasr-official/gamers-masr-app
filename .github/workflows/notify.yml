@@ -1,0 +1,27 @@
+name: Notify
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/998355810935/locations/global/workloadIdentityPools/gm-gh-actions/providers/github-oidc
+          service_account: gm-push-sender@gamers-masr-app.iam.gserviceaccount.com
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Send notifications
+        env:
+          GCP_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: node scripts/notify.mjs
