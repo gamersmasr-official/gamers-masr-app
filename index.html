@@ -121,6 +121,34 @@ async function idt(){
  var r=await fetch("https://securetoken.googleapis.com/v1/token?key="+K,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"grant_type=refresh_token&refresh_token="+encodeURIComponent(S.user.refresh)});
  var d=await r.json();if(!d.id_token){if(d.error&&/INVALID_REFRESH_TOKEN|TOKEN_EXPIRED|USER_DISABLED|USER_NOT_FOUND|INVALID_GRANT/i.test(JSON.stringify(d.error))){S.user=null;save()}return null}
  S.user.token=d.id_token;S.user.refresh=d.refresh_token;S.user.exp=Date.now()+d.expires_in*1000;save();return S.user.token}
+var VAPID='BCYPmkAiGBAEIhhLcFoxfNBu2RnBGU2GsUKmy7xFnoXxU5gTw4IqJAYVR_D541gedjBzdx0gS9EkSybdMRIKWtk';
+var FBCFG={apiKey:'AIzaSyAAXic-35km1xhfM8PUtvk__RwJIHfkB8M',authDomain:'gamers-masr-app.firebaseapp.com',projectId:'gamers-masr-app',messagingSenderId:'998355810935',appId:'1:998355810935:web:b78b86f011f5abdeeaa472'};
+function notifSup(){return ('Notification' in window)&&('serviceWorker' in navigator)&&!(/; wv\)/.test(navigator.userAgent))}
+function notifIOS(){return /iPhone|iPad|iPod/.test(navigator.userAgent)&&!window.navigator.standalone}
+function notifOn(){try{return localStorage.getItem('gm-notif')=='1'}catch(e){return false}}
+function notifCardH(){
+ if(!notifSup())return '<div class="card"><h3>الإشعارات</h3><p class="note">الإشعارات غير متاحة داخل التطبيق على هذا الجهاز. افتح نسخة الويب في متصفح عادي (أو ثبّتها على الشاشة الرئيسية) وفعّلها من هناك.</p></div>';
+ if(notifIOS())return '<div class="card"><h3>الإشعارات</h3><p class="note">على iPhone تعمل الإشعارات فقط من النسخة المضافة للشاشة الرئيسية: افتح الموقع في Safari ثم مشاركة › إضافة إلى الشاشة الرئيسية، وافتحه من الأيقونة وفعّل الإشعارات من هناك.</p></div>';
+ var on=notifOn();
+ return '<div class="card"><h3>الإشعارات</h3><p class="note">إشعار عند نشر خبر أو مود جديد. '+(on?'مفعّلة على هذا الجهاز.':'غير مفعّلة — التفعيل اختياري.')+'</p><button class="b sm'+(on?' g':'')+'" onclick="notifToggle()">'+(on?'إيقاف الإشعارات':'تفعيل الإشعارات')+'</button></div>'}
+async function fbLoad(){if(window.firebase&&firebase.messaging)return;var s1=document.createElement('script');s1.src='https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js';document.head.appendChild(s1);await new Promise(function(res,rej){s1.onload=res;s1.onerror=function(){rej(new Error('cdn'))}});var s2=document.createElement('script');s2.src='https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js';document.head.appendChild(s2);await new Promise(function(res,rej){s2.onload=res;s2.onerror=function(){rej(new Error('cdn'))}})}
+async function notifToggle(){
+ if(notifOn()){localStorage.setItem('gm-notif','0');try{await fs("DELETE","/pushTokens/"+S.user.uid)}catch(e){}toast("تم إيقاف الإشعارات على هذا الجهاز");R();return}
+ try{
+  toast("جارٍ التفعيل…");
+  var perm=await Notification.requestPermission();
+  if(perm!='granted'){toast("المتصفح رفض إذن الإشعارات — فعّله من إعدادات الموقع في المتصفح");return}
+  await fbLoad();
+  firebase.initializeApp(FBCFG);
+  var reg=await navigator.serviceWorker.register('firebase-messaging-sw.js');
+  var tok=await firebase.messaging().getToken({vapidKey:VAPID,serviceWorkerRegistration:reg});
+  if(!tok){toast("تعذر إنشاء رمز الإشعارات");return}
+  var pf=(/iPhone|iPad|iPod/.test(navigator.userAgent))?'ios':(/Android/.test(navigator.userAgent)?'android':'web');
+  var r=await commit([{update:{name:dn("pushTokens/"+S.user.uid),fields:{uid:sv(S.user.uid),token:sv(tok),ua:sv(navigator.userAgent.slice(0,190)),platform:sv(pf),enabled:{booleanValue:true}}},updateTransforms:[{fieldPath:"createdAt",setToServerValue:"REQUEST_TIME"}]}]);
+  if(!r.ok){toast("تعذر الحفظ (رمز "+r.status+")");return}
+  localStorage.setItem('gm-notif','1');toast("تم تفعيل الإشعارات على هذا الجهاز");R();
+ }catch(e){toast("خطأ في التفعيل: "+(e&&e.message?e.message.slice(0,80):e))}
+}
 async function fs(method,path,body){
  var h={"Content-Type":"application/json"},t=await idt();if(t)h.Authorization="Bearer "+t;
  var r=await fetch(DB+path,{method:method,headers:h,body:body?JSON.stringify(body):undefined});
@@ -396,7 +424,7 @@ async function doSusp(u){var x=memOf(u);var r=await fs("PATCH","/members/"+u+"?u
  if(r.ok){x.susp=!x.susp;toast(x.susp?"تم إيقاف العضوية":"تمت إعادة التفعيل")}else toast("تعذر التنفيذ (رمز "+r.status+")");R()}
 function roomShut(){if(!S.room||S.admin)return false;var r=S.rooms.filter(function(x){return x.id==S.room})[0];return !!(r&&r.closed)}
 function admSec(i){S.as=i;R()}
-function roomCardA(r){var id=esc(r.id);var CR=(RSC(r.id)||r.by==(S.user&&S.user.uid)),E=PM("roomedit")&&CR,MB=PM("roommembers")&&CR,DL=PM("roomdel")&&CR,PN=PM("roompin")&&CR,CL=PM("roomclose")&&CR;return '<div class="card"><h3>'+esc(r.name)+' <small>('+(r.open?'مفتوحة':'خاصة')+(r.closed?' · الكتابة مقفولة':'')+')</small></h3><p>'+((r.members||[]).map(function(u){return esc(mname(u))+(MB?' <a href="#" onclick="roomRm(\''+id+'\',\''+esc(u)+'\');return false">×</a>':'')}).join("، ")||"لا أعضاء")+'</p><div class="row" style="flex-wrap:wrap;gap:6px"><button class="b sm" onclick="roomOpen(\''+id+'\')">فتح الشات</button>'+(E?'<button class="b g sm" onclick="roomRename(\''+id+'\')">تعديل الاسم</button>':'')+''+(PN?'<button class="b g sm" onclick="roomPin(\''+id+'\')">'+(r.pin?'تغيير التثبيت':'تثبيت رسالة')+'</button>':'')+''+(E?'<button class="b g sm" onclick="roomToggle(\''+id+'\',\'open\')">'+(r.open?'تحويلها لخاصة':'تحويلها لمفتوحة')+'</button>':'')+''+(CL?'<button class="b g sm" onclick="roomToggle(\''+id+'\',\'closed\')">'+(r.closed?'فتح الكتابة':'قفل الكتابة')+'</button>':'')+''+(MB?'<button class="b g sm" onclick="roomAdd(\''+id+'\')">إضافة أعضاء</button>':'')+''+(DL?'<button class="b sm" style="background:#8b1e2d" onclick="roomDelete(\''+id+'\')">حذف الغرفة</button>':'')+'</div></div>'}
+function roomCardA(r){var id=esc(r.id);var CR=(RSC(r.id)||r.by==(S.user&&S.user.uid)),E=PM("roomedit")&&CR,MB=PM("roommembers")&&CR,DL=PM("roomdel")&&CR,PN=PM("roompin")&&CR,CL=PM("roomclose")&&CR;return '<div class="card"><h3>'+esc(r.name)+' <small>('+(r.open?'مفتوحة':'خاصة')+(r.closed?' · الكتابة مقفولة':'')+' · '+((r.members||[]).length)+' عضو)</small></h3><p>'+((r.members||[]).map(function(u){return esc(mname(u))+(MB?' <a href="#" onclick="roomRm(\''+id+'\',\''+esc(u)+'\');return false">×</a>':'')}).join("، ")||"لا أعضاء")+'</p><div class="row" style="flex-wrap:wrap;gap:6px"><button class="b sm" onclick="roomOpen(\''+id+'\')">فتح الشات</button>'+(E?'<button class="b g sm" onclick="roomRename(\''+id+'\')">تعديل الاسم</button>':'')+''+(PN?'<button class="b g sm" onclick="roomPin(\''+id+'\')">'+(r.pin?'تغيير التثبيت':'تثبيت رسالة')+'</button>':'')+''+(E?'<button class="b g sm" onclick="roomToggle(\''+id+'\',\'open\')">'+(r.open?'تحويلها لخاصة':'تحويلها لمفتوحة')+'</button>':'')+''+(CL?'<button class="b g sm" onclick="roomToggle(\''+id+'\',\'closed\')">'+(r.closed?'فتح الكتابة':'قفل الكتابة')+'</button>':'')+''+(MB?'<button class="b g sm" onclick="roomAdd(\''+id+'\')">إضافة أعضاء</button>':'')+((S.admin||PM('roles'))?'<button class="b g sm" onclick="roomModPick(\''+id+'\')">تعيين مشرف</button>':'')+''+(DL?'<button class="b sm" style="background:#8b1e2d" onclick="roomDelete(\''+id+'\')">حذف الغرفة</button>':'')+'</div></div>'}
 async function roomSet(rid,o){var f={},m=[];for(var k in o){m.push(k);f[k]=typeof o[k]=="boolean"?{booleanValue:o[k]}:sv(o[k])}var r=await commit([{update:{name:dn("rooms/"+rid),fields:f},updateMask:{fieldPaths:m},currentDocument:{exists:true}}]);toast(r.ok?"تم التحديث":"تعذر التحديث (رمز "+r.status+")");await loadRooms();R()}
 function roomOf(rid){return S.rooms.filter(function(x){return x.id==rid})[0]}
 function roomToggle(rid,k){var r=roomOf(rid);if(!r)return;roomSet(rid,(function(){var o={};o[k]=!r[k];return o})())}
@@ -443,12 +471,15 @@ function roomPick(u){if(!S.rooms.length){toast("لا توجد غرف بعد");re
 async function roomMemId(rid,add,uid){var t={fieldPath:"members"};t[add?"appendMissingElements":"removeAllFromArray"]={values:[sv(uid)]};
  var r=await commit([{update:{name:dn("rooms/"+rid)},updateMask:{fieldPaths:[]},updateTransforms:[t],currentDocument:{exists:true}}]);
  if(r.ok)toast(add?"تمت الإضافة للغرفة":"تمت الإزالة من الغرفة");else toast("تعذر التعديل (رمز "+r.status+")");await loadRooms();R()}
+function roomModPick(rid){var r=S.rooms.filter(function(x){return x.id==rid})[0];if(!r)return;var l=(r.members||[]);if(!l.length){toast("لا أعضاء في الغرفة بعد — أضف أعضاء أولاً");return}
+ var h='<div class="bk" onclick="closeOv()"></div><div class="dl" style="max-height:80vh;overflow:auto"><p><b>تعيين مشرف للغرفة: '+esc(r.name)+'</b></p><p class="note">اختر العضو، ثم حدّد صلاحياته من القائمة — سيكون نطاقه هذه الغرفة فقط ما لم توسّعه.</p>'+l.map(function(u){return '<button class="b g sm" style="display:block;width:100%;margin:4px 0" onclick="roomModGo(\''+esc(rid)+'\',\''+esc(u)+'\')">'+esc(mname(u))+'</button>'}).join("")+'<button class="b g" onclick="closeOv()">إلغاء</button></div>';setOv(h)}
+async function roomModGo(rid,u){await roleDlg(u);var boxes=document.querySelectorAll(".rr");for(var i=0;i<boxes.length;i++){if(boxes[i].value==rid)boxes[i].checked=true}var t=document.getElementById("rt");if(t&&!t.value){var r=S.rooms.filter(function(x){return x.id==rid})[0];t.value="مشرف "+((r&&r.name)||"الغرفة")}}
 function roomAdd(rid){var r=S.rooms.filter(function(x){return x.id==rid})[0];var l=S.mem.filter(function(x){return (r.members||[]).indexOf(x.id)<0});if(!l.length){toast("كل الأعضاء في الغرفة");return}
  sheet("إضافة إلى "+r.name,l.map(function(x){return{t:x.name,f:function(){roomMemId(rid,true,x.id)}}}))}
 function roomRm(rid,u){ask("إزالة "+mname(u)+" من الغرفة؟","إزالة",function(){roomMemId(rid,false,u)})}
 async function createRoom(){var n=gv("rn").trim();if(n.length<2||n.length>40){toast("اسم الغرفة من 2 إلى 40 حرف");return}
  var rid0=newId();var r=await commit([{update:{name:dn("rooms/"+rid0),fields:{by:sv(S.user.uid),name:sv(n),open:{booleanValue:!!(document.getElementById("ro")&&document.getElementById("ro").checked)},members:{arrayValue:{}}}},updateTransforms:[{fieldPath:"createdAt",setToServerValue:"REQUEST_TIME"}],currentDocument:{exists:false}}]);
- if(r.ok)toast("تم إنشاء الغرفة");if(r.ok&&!S.admin)await roomMemId(rid0,true,S.user.uid);else toast("تعذر إنشاء الغرفة (رمز "+r.status+")");await loadAdmin()}
+ if(!r.ok){toast("تعذر إنشاء الغرفة (رمز "+r.status+")")}else{toast("تم إنشاء الغرفة");if(!S.admin)await roomMemId(rid0,true,S.user.uid)}await loadAdmin()}
 /* ===== friends ===== */
 async function loadFriends(){if(!S.member)return;
  var a=await query("friends",{eq:["from",S.user.uid],lim:40}),b=await query("friends",{eq:["to",S.user.uid],lim:40});
@@ -591,6 +622,7 @@ function R(){
    if(S.admin)h+='<div class="note">أنت مدير لكن حسابك غير مضاف للأعضاء بعد.</div>';
    if(S.susp)h+='<div class="card"><h3>الحساب موقوف</h3><p>تم إيقاف عضويتك من الإدارة.</p></div>';else if(S.req)h+='<div class="card"><h3>طلبك قيد المراجعة</h3><p>الاسم: '+esc(S.req.name)+'. بانتظار موافقة الإدارة.</p></div>';else h+='<input id="nm" placeholder="اسم العرض (2-30)"><button class="b" onclick="sendReq()">طلب انضمام</button>'}
   else{var up=S.am=="up";h+='<div class="row" style="gap:8px;margin:0 0 10px"><button class="b'+(up?' g':'')+'" onclick="S.am=\'in\';S.err=\'\';R()">تسجيل الدخول</button><button class="b'+(up?'':' g')+'" onclick="S.am=\'up\';S.err=\'\';R()">إنشاء حساب</button></div><input id="em" type="email" value="'+esc((S.fv||{}).em)+'" oninput="FV(\'em\',this.value)" placeholder="البريد الإلكتروني" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"><input id="pw" type="password" value="'+esc((S.fv||{}).pw)+'" oninput="FV(\'pw\',this.value)" placeholder="كلمة المرور" autocomplete="'+(up?'new-password':'current-password')+'" autocapitalize="none" autocorrect="off" spellcheck="false"><label style="display:block;margin:4px 2px 8px;font-size:13px;color:var(--mut)"><input type="checkbox" onchange="document.getElementById(\'pw\').type=this.checked?\'text\':\'password\'" style="width:auto;margin-left:6px">إظهار كلمة السر</label>'+(up?'<input id="nm" value="'+esc((S.fv||{}).nm)+'" oninput="FV(\'nm\',this.value)" placeholder="اسم العرض (2-30)"><button class="b" '+(S.busy?'disabled ':'')+'onclick="doReg()">'+(S.busy?'جارٍ الإنشاء…':'إنشاء حساب')+'</button>':'<button class="b" '+(S.busy?'disabled ':'')+'onclick="doLogin()">'+(S.busy?'جارٍ الدخول…':'تسجيل الدخول')+'</button><button class="b g sm" onclick="forgotPw()">نسيت كلمة السر؟ أرسل رابط استعادة</button>')}
+  if(S.user&&S.profile)h+=notifCardH();
   if(S.user)h+='<button class="b g" onclick="out()">تسجيل الخروج</button>';
   if(!lock())h+='<h2>تابعنا</h2><div class="card"><p><a href="https://www.youtube.com/@GamersMasrOfficial">YouTube</a> · <a href="https://www.instagram.com/gamersmasrofficial/">Instagram</a> · <a href="https://t.me/GamersMasrOfficial">Telegram</a> · <a href="https://www.facebook.com/gamersmasrofficial/">Facebook</a></p></div>'}
  if(S.err){h='<div class="note">'+esc(S.err)+'</div>'+h;}
