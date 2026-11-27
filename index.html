@@ -656,3 +656,4 @@ function hvInit(){try{var v=document.getElementById("hv");if(!v||v.src)return;if
 document.addEventListener("visibilitychange",function(){var v=document.getElementById("hv");if(!v||!v.src)return;if(document.hidden)v.pause();else{var p=v.play();if(p&&p.catch)p.catch(function(){})}});
 window.addEventListener("load",hvInit);
 </script></body></html>
+<script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("firebase-messaging-sw.js").catch(function(){})})}</script>
