@@ -26,3 +26,5 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(clients.openWindow('./'));
 });
+// PWA installability: a fetch listener is required for the desktop install prompt.
+self.addEventListener('fetch', (event) => {});
